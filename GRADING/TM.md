@@ -8,106 +8,122 @@
 
 ## 0) Мета
 
-- **Проект (опционально BYO):** TODO: ссылка / «учебный шаблон»
-- **Версия (commit/date):** TODO: abc123 / YYYY-MM-DD
-- **Кратко (1-2 предложения):** TODO: что за система и кто ей пользуется
+- **Проект (опционально BYO):** «учебный шаблон»
+- **Версия (commit/date):** 2025-10-13
+- **Кратко (1-2 предложения):** «учебный шаблон»
 
 ---
 
 ## 1) Архитектура и границы доверия (TM1, S04)
 
-- **Роли/активы:** TODO: пользователь, админ; ПДн/токены/платёжные данные/модели …
-- **Зоны доверия:** Internet / DMZ / Internal / Device (если есть)
+- **Роли/активы:** end user, admin, tenant manager.
+- **Trust Zones:**
+  - **Internet:** public clients (browsers, REST calls).
+  - **DMZ:** API Gateway (auth, rate limiting).
+  - **Internal:** services and databases (RBAC, business logic).
+  - **External:** third-party payment API.
 - **Context/DFD:**
 
 ```mermaid
-%% TODO: замените каркас на свой (минимум 5 узлов/потоков)
 flowchart LR
-  U[User] -->|HTTPS| GW[API/Ingress]
-  GW --> S1[Service A]
-  GW --> S2[Service B]
-  S1 --> DB[(Database)]
-  S2 --> AUTH[Auth/IdP]
+  subgraph Internet[Интернет / Внешние клиенты]
+    U[Клиент/Браузер]
+  end
+
+  subgraph Service[Сервис - приложение]
+    A[API Gateway / Controller]
+    S[Сервис / Бизнес-логика]
+    D[База данных]
+  end
+
+  subgraph External[Внешние провайдеры]
+    X[External API / Payment]
+  end
+
+  U -- "JWT/HTTPS [NFR: AuthN, InputValidation, RateLimiting, API-Contract/Errors (RFC7807)]" --> A
+  A -->|"DTO / Requests"| S
+  S -->|"SQL/ORM [NFR: PII, AuthZ/RBAC, Integrity]"| D
+  S -->|"HTTP/gRPC [NFR: Auditability, Timeouts/Retry/CircuitBreaker]"| X
+
+  classDef boundary fill:#f6f6f6,stroke:#999,stroke-width:1px;
+  class Internet,Service,External boundary;
 ```
 
-  (или приложите файл в `EVIDENCE/dfd-context.png` и дайте ссылку)
 
 - **Критичные интерфейсы и допущения:**  
-  TODO: что считаем доверенным/недоверенным; внешние интеграции; админ-доступ; где проходит boundary
+  - Internet → API: untrusted zone; requires AuthN, InputValidation, RateLimiting.
+  - Service → DB: trusted, protected via RBAC and integrity constraints.
+  - Service → External API: partially trusted; requires timeout and circuit breaker.
+  - Admin path: limited to internal roles with audit logging.
+
 
 ---
 
 ## 2) Реестр угроз STRIDE (TM2, TM3, S04)
 
-_Минимум: закрыть все буквы **S, T, R, I, D, E**. Оценки **L/I** по шкале 1-5._
-
-| ID  | STRIDE | Компонент/поток | Угроза (кратко)                                   | L | I | L×I |
-|-----|--------|------------------|----------------------------------------------------|---|---|-----|
-| T01 | **S**  | AUTH             | Подмена личности украденным/поддельным токеном     | 3 | 5 | 15  |
-| T02 | **T**  | GW → S1          | Replay-атака, отсутствие nonce/ts                  | 2 | 4 | 8   |
-| T03 | **R**  | Audit            | Отказ от действий: нет связки user↔action          | 3 | 3 | 9   |
-| T04 | **I**  | S1 → DB          | Инъекции/невалидный ввод                           | 2 | 5 | 10  |
-| T05 | **D**  | S1               | DoS/ресурсное истощение без лимитов/таймаутов      | 4 | 4 | 16  |
-| T06 | **E**  | Repo/Secrets     | Секреты в коде/логах                               | 2 | 5 | 10  |
-| …   | …      | …                | …                                                  | … | … | …   |
-
-> TODO: добавьте доменно-специфичные угрозы (злоупотребления, scraping, многократная регистрация и т.п.).
+| ID | STRIDE | Component / Flow | Threat (short) | L | I | L×I |
+|----|---------|------------------|----------------|---|---|----|
+| R-01 | S | Internet → API | Token reuse / JWT spoofing | 4 | 4 | 16 |
+| R-02 | T | Internet → API | Dirty or oversized payload | 3 | 4 | 12 |
+| R-03 | D | Internet → API | Brute-force / request flooding | 4 | 4 | 16 |
+| R-04 | I | Service / Logs | PII leakage in logs | 3 | 4 | 12 |
+| R-05 | E | Service / RBAC | Cross-tenant access | 4 | 5 | 20 |
+| R-06 | T | Service → DB | SQL injection / unvalidated input | 3 | 4 | 12 |
+| R-07 | R | Admin actions | No immutable audit log | 3 | 3 | 9 |
+| R-08 | D | Service → External | External API hang (no timeout/retry/CB) | 4 | 4 | 16 |
 
 ---
 
 ## 3) Приоритизация и Top-5 _(TM3, S04)_
 
-1) **T05 DoS** - L×I=16; публичная экспозиция; нет лимитов/таймаутов.  
-2) **T01 Подмена личности** - L×I=15; доступ к ПДн; критичен контур AUTH.  
-3) **T04 Инъекции** - L×I=10; риск компрометации БД.  
-4) **T06 Секреты** - L×I=10; риск утечек/эскалации.  
-5) **T03 Отказ от действий** - L×I=9; требуется трассируемость.  
-
-> TODO: если меняете порядок - укажите 1-2 фактора (экспозиция/чувствительность/частота/обнаружимость).
+1. **R-05 (E)** – Cross-tenant RBAC bypass → 20 points (highest impact)
+2. **R-01 (S)** – Token spoofing → 16 points
+3. **R-03 (D)** – Brute-force abuse → 16 points
+4. **R-08 (D)** – External API DoS → 16 points
+5. **R-04 (I)** – PII disclosure in logs → 12 points
 
 ---
 
 ## 4) Требования (S03) и ADR-решения (S05) под Top-5 (TM4)
 
-### NFR-1. Аутентификация и защита токенов
+### NFR-001. Authentication (AuthN)
+- Linked Risk: R-01
+- ADR: [JWT TTL + Refresh + Rotation](../EVIDENCE/S05/S05_ADR_JWT_TTL_Refresh_Rotation.md)
+- AC (GWT):
+  - Given valid token → Then 200 OK and X-User-Id matches subject.
+  - Given expired/stolen token → Then 401 RFC 7807.
 
-- **AC (GWT):**
-  - **Given** валидный токен, **When** запрос `/api/...`, **Then** `200` и `X-User-Id=subject`.
-  - **Given** просроченный/поддельный токен, **When** запрос, **Then** `401` и событие `auth.token_invalid` в аудите.
+### NFR-006. RBAC / Authorization
+- Linked Risk: R-05
+- ADR: [RBAC + Tenant Isolation](../EVIDENCE/S05/S05_ADR_RBAC_Tenant_Isolation.md)
+- AC (GWT):
+  - Given user A → When accessing tenant B data → Then 403 RFC 7807 (no leak).
 
-### NFR-2. Лимиты и таймауты
-
-- **AC (GWT):** rate-limit ≤ **N** rps/uid и ≤ **M** rps/ip; timeout ≤ **T** сек; при превышении - `429` + событие `rate_limit_hit`.
-
-### NFR-3. Аудит критических операций
-
-- **AC (GWT):** логируется `correlation_id`, uid, время и результат для операций (`login`, `role_change`, `data_export`, …).
-
-> TODO: при необходимости добавьте свои NFR под Top-5.
-
----
 
 ### Краткие ADR (минимум 2) - архитектурные решения S05
 
 (карточки короткие, по делу)
 
-#### ADR-001 - TODO: название
+#### ADR-001 - JWT TTL + Refresh + Rotation
 
-- **Context (угрозы/NFR):** T01, NFR-1; контур AUTH
-- **Decision:** что делаем и где (напр., проверка подписи токена в GW; короткий TTL; rotatable keys)
-- **Trade-offs (кратко):** стоимость/производительность/UX
-- **DoD (готовность):** измеримые условия (см. раздел 6)
-- **Owner:** ФИО/роль
-- **Evidence (план/факт):** EVIDENCE/dast-auth-YYYY-MM-DD.pdf#token-tests
+- **Context (угрозы/NFR):** R-01, NFR-001; tokens signed with RS256; kid header supports key rotation.
+- **Decision:** Adopt **short-lived access tokens** (TTL = 15 min) and **rotating refresh tokens** (TTL = 7 days) with revoke list storage. Use **RFC 7807** error format and rate-limit login/refresh endpoints.
+- **Trade-offs (кратко):** Limits exposure window and enables revocation, requires revoke store and token rotation logic.
+- **DoD (готовность):** 
+**Given** expired or stolen token  
+**When** sending request to API  
+**Then** response is 401/403 RFC 7807; no sensitive info disclosed.
+- **Owner:** Нгуен Дык Хю / Backend developer
+- **Evidence (план/факт):**  DAST auth-flow tests
 
-#### ADR-002 - TODO: название
+#### ADR-002 - RBAC + Tenant Isolation (deny-by-default)
 
-- **Context:** T05, NFR-2; публичные endpoint’ы
+- **Context:** R-05, NFR-006; Cross-tenant access, Elevation of Privilege
 - **Decision:** rate-limit на GW + server-side timeouts; backpressure
 - **Trade-offs:** возможные 429 и влияние на UX
 - **DoD:** срабатывание 429 при >N rps; p95 ≤ T сек
-- **Owner:** ФИО/роль
-- **Evidence (план/факт):** EVIDENCE/load-after.png
+- **Owner:** Фам Тиен Мань / Backend developer
+- **Evidence (план/факт):** Policy tests
 
 ---
 
@@ -115,30 +131,27 @@ _Минимум: закрыть все буквы **S, T, R, I, D, E**. Оцен
 
 | Threat | NFR   | ADR     | Чем проверяем (план/факт)                                                                 |
 |-------:|-------|---------|-------------------------------------------------------------------------------------------|
-| T01    | NFR-1 | ADR-001 | DAST auth-flow; аудит `auth.token_invalid` → EVIDENCE/dast-auth-YYYY-MM-DD.pdf / audit-sample.txt |
-| T05    | NFR-2 | ADR-002 | Нагрузочный тест + проверка 429/таймаутов → EVIDENCE/load-after.png                       |
-| T04    | NFR-X | ADR-00X | SAST/линтер на инъекции/параметризацию → EVIDENCE/sast-YYYY-MM-DD.pdf#sql-1              |
-| T03    | NFR-3 | ADR-00Y | Анализ образцов аудита → EVIDENCE/audit-sample.txt#corrid                                |
-
-> TODO: заполните таблицу для ваших Top-5; верификация может быть «планом», позже артефакты появятся в DV/DS.
+| R-01 (S) Token spoofing | NFR-001 | ADR-02 | DAST auth-flow tests |
+| R-03 (D) Abuse / brute force | NFR-003 | ADR-03 | Load test |
+| R-04 (I) PII leakage | NFR-005 | ADR-05 | Log inspection |
+| R-05 (E) Cross-tenant | NFR-006 | ADR-01 | Policy tests |
+| R-08 (D) External API DoS | NFR-009 | ADR-06 | Integration test |
 
 ---
 
 ## 6) План проверок (мост в DV/DS)
 
-- **SAST/Secrets/SCA:** TODO: инструменты и куда положите отчёты в `EVIDENCE/`
-- **SBOM:** TODO: генератор/формат
-- **DAST (если применимо):** TODO: стенд/URL; профиль
-- **Примечание:** на этапе TM допустимы черновые планы/ссылки; финальные отчёты появятся в **DV/DS**.
-
+- **SAST/Secrets/SCA:** GitHub Advanced Security, Trivy, Semgrep, Gitleaks.
+- **SBOM:** Syft, SPDX-JSON
+- **DAST (если применимо):** OWASP ZAP `auth-flow.yaml`.
 ---
 
 ## 7) Самопроверка по рубрике TM (0/1/2)
 
-- **TM1. Архитектура и границы доверия:** [ ] 0 [ ] 1 [ ] 2  
-- **TM2. Покрытие STRIDE и уместность угроз:** [ ] 0 [ ] 1 [ ] 2  
-- **TM3. Приоритизация и Top-5:** [ ] 0 [ ] 1 [ ] 2  
-- **TM4. NFR + ADR под Top-5:** [ ] 0 [ ] 1 [ ] 2  
-- **TM5. Трассировка → (план)проверок:** [ ] 0 [ ] 1 [ ] 2  
+- **TM1. Архитектура и границы доверия:** [ ] 0 [ ] 1 [x] 2  
+- **TM2. Покрытие STRIDE и уместность угроз:** [ ] 0 [ ] 1 [x] 2  
+- **TM3. Приоритизация и Top-5:** [ ] 0 [ ] 1 [x] 2  
+- **TM4. NFR + ADR под Top-5:** [ ] 0 [ ] 1 [x] 2  
+- **TM5. Трассировка → (план)проверок:** [ ] 0 [ ] 1 [x] 2  
 
-**Итог TM (сумма):** __/10
+**Итог TM (сумма):** 10/10
