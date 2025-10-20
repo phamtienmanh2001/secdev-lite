@@ -100,7 +100,7 @@ flowchart LR
   - Given user A → When accessing tenant B data → Then 403 RFC 7807 (no leak).
 
 
-### Краткие ADR (минимум 2) - архитектурные решения S05
+### Краткие ADR - архитектурные решения S05
 
 (карточки короткие, по делу)
 
@@ -109,8 +109,8 @@ flowchart LR
 - **Context (угрозы/NFR):** R-01, NFR-001; tokens signed with RS256; kid header supports key rotation.
 - **Decision:** Adopt **short-lived access tokens** (TTL = 15 min) and **rotating refresh tokens** (TTL = 7 days) with revoke list storage. Use **RFC 7807** error format and rate-limit login/refresh endpoints.
 - **Trade-offs (кратко):** Limits exposure window and enables revocation, requires revoke store and token rotation logic.
-- **DoD (готовность):** 
-**Given** expired or stolen token  
+- **DoD (готовность):**   
+**Given** expired or stolen token      
 **When** sending request to API  
 **Then** response is 401/403 RFC 7807; no sensitive info disclosed.
 - **Owner:** Нгуен Дык Хю / Backend developer
@@ -125,12 +125,47 @@ flowchart LR
 - **Owner:** Фам Тиен Мань / Backend developer
 - **Evidence (план/факт):** Policy tests
 
+#### ADR-003 - Rate Limiting (≤5 req/min/IP) + 429 + Retry-After
+
+- **Context:** R-03, NFR-003; риск злоупотребления частотой запросов (brute-force, flood)
+- **Decision:** Настроить ограничение скорости на уровне API Gateway: не более 5 запросов/мин с одного IP и 20 на пользователя. При превышении возвращается HTTP 429 Too Many Requests с заголовком Retry-After (30 сек).
+- **Trade-offs:** Снижает риск DoS, практически не влияет на легитимных пользователей; требует middleware Redis/NGINX.
+- **DoD:**   
+**Given** серия запросов > 5 в минуту с одного IP    
+**When** API обрабатывает их   
+**Then** возвращается 429 + Retry-After.
+- **Owner:** Фам Тиен Мань / Backend developer
+- **Evidence (план/факт):** Load-тест и лог rate-limiter
+
+#### ADR-004 - Timeouts ≤2s + Retry≤3 with jitter + Circuit Breaker (50%/1m)
+
+- **Context:** R-08, NFR-009; риск зависания внешнего API и цепной ошибки сервисов.
+- **Decision:** Установить таймаут ≤ 2 с, повтор до 3 раз с экспоненциальной задержкой (jitter); Circuit Breaker открывается при ошибках ≥ 50 % за 1 минуту. Добавить метрики и логирование состояния CB.
+- **Trade-offs:** Повышает устойчивость к сбоям, но увеличивает сложность конфигурации и мониторинга.
+- **DoD:**   
+**Given** внешний провайдер недоступен   
+**When** POST /api/payment выполняется  
+**Then** ожидание ≤ 6 с; CB открывается; возврат ошибки 5xx.
+- **Owner:** Нгуен Дык Хю / Backend developer
+- **Evidence (план/факт):** Интеграционные тесты
+
+#### ADR-005 - Input Validation & Size Limits; reject extra fields
+
+- **Context:** R-02, NFR-002 и NFR-004; риск грязного ввода и несоответствия схеме.
+- **Decision:** Использовать валидацию JSON-схемы (DTO) и ограничение тела запроса ≤ 16 KiB; отклонять лишние или некорректные поля.
+- **Trade-offs:** Гарантирует целостность данных, но требует обновления схем при изменении API.
+- **DoD:**     
+**Given** payload с дополнительными или повреждёнными полями    
+**When** POST /api/register   
+**Then** 400/413 RFC 7807, без краша.
+- **Owner:** Фам Тиен Мань / Backend developer
+- **Evidence (план/факт):** API тесты валидации
 ---
 
 ## 5) Трассировка Threat → NFR → ADR → (План)Проверки (TM5)
 
-| Threat | NFR   | ADR     | Чем проверяем (план/факт)                                                                 |
-|-------:|-------|---------|-------------------------------------------------------------------------------------------|
+| Threat | NFR | ADR | Чем проверяем (план/факт) |
+|-------|-------|---------|-------------------------------------------------------------------------------------------|
 | R-01 (S) Token spoofing | NFR-001 | ADR-02 | DAST auth-flow tests |
 | R-03 (D) Abuse / brute force | NFR-003 | ADR-03 | Load test |
 | R-04 (I) PII leakage | NFR-005 | ADR-05 | Log inspection |
