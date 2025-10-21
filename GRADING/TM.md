@@ -166,11 +166,11 @@ flowchart LR
 
 | Threat | NFR | ADR | Чем проверяем (план/факт) |
 |-------|-------|---------|-------------------------------------------------------------------------------------------|
-| R-01 (S) Token spoofing | NFR-001 | ADR-02 | DAST auth-flow tests |
-| R-03 (D) Abuse / brute force | NFR-003 | ADR-03 | Load test |
-| R-04 (I) PII leakage | NFR-005 | ADR-05 | Log inspection |
-| R-05 (E) Cross-tenant | NFR-006 | ADR-01 | Policy tests |
-| R-08 (D) External API DoS | NFR-009 | ADR-06 | Integration test |
+| R-01 (S) Token spoofing | NFR-001 | ADR-001 | DAST auth-flow tests |
+| R-03 (D) Abuse / brute force | NFR-003 | ADR-003 | Load test |
+| R-04 (T) PII leakage | NFR-002, NFR-004 | ADR-00 | Log inspection |
+| R-05 (E) Cross-tenant | NFR-006 | ADR-002 | Policy tests |
+| R-08 (D) External API DoS | NFR-009 | ADR-004 | Integration test |
 
 ---
 
