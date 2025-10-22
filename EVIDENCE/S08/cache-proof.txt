@@ -1,0 +1,11 @@
+https://github.com/phamtienmanh2001/secdev-s06-s08/actions/runs/18686177183/job/53286426507
+                    ^
+                    |
+In this link (1st run) in stage cache pip, logged that Cache not found for input keys: Linux-pip-7b5374896b79682e57f65fac843759934fcbc31bd8574b678f75cf703b6ff195
+
+
+https://github.com/phamtienmanh2001/secdev-s06-s08/actions/runs/18686177183/job/53286745234
+                    ^
+                    |
+In this link (2nd run) in stage cache pip, logged that Cache restored successfully
+Cache restored from key: Linux-pip-7b5374896b79682e57f65fac843759934fcbc31bd8574b678f75cf703b6ff195

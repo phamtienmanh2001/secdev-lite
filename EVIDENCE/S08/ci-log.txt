@@ -1,0 +1,31 @@
+Checkout → Setup Python → Mask any incidental value (подстраховка) → Cache pip → Install deps → Init DB → Run tests with coverage → Secrets proof (DV2) → Upload artifacts
+
+Фрагменты лога, где секретов нет:
+2025-10-21T16:45:55.1012893Z ##[group]Run echo "::add-mask::***"
+2025-10-21T16:45:55.1014151Z [36;1mecho "::add-mask::***"[0m
+2025-10-21T16:45:55.1052182Z shell: /usr/bin/bash -e {0}
+2025-10-21T16:45:55.1053388Z env:
+2025-10-21T16:45:55.1054129Z   PYTHONUNBUFFERED: 1
+2025-10-21T16:45:55.1054925Z ##[endgroup]
+
+2025-10-21T16:45:55.8238771Z ##[group]Run actions/setup-python@v5
+2025-10-21T16:45:55.8239751Z with:
+2025-10-21T16:45:55.8240560Z   python-version: 3.11
+2025-10-21T16:45:55.8241338Z   check-latest: false
+2025-10-21T16:45:55.8242604Z   token: ***
+
+
+Run if [ -z "${SECRET_KEY}" ]; then echo "secret present: no"; exit 1; fi
+  if [ -z "${SECRET_KEY}" ]; then echo "secret present: no"; exit 1; fi
+  echo "secret present: yes" > EVIDENCE/S08/secrets-proof.txt
+  shell: /usr/bin/bash -e {0}
+  env:
+    PYTHONUNBUFFERED: 1
+    pythonLocation: /opt/hostedtoolcache/Python/3.11.13/x64
+    PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.13/x64/lib/pkgconfig
+    Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.13/x64
+    Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.13/x64
+    Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.13/x64
+    LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.13/x64/lib
+    SECRET_KEY: ***
+

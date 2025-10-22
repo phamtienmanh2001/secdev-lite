@@ -1,0 +1,8 @@
+Archive:  evidence-s08-py3.11.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+     3368  2025-10-21 16:46   coverage.xml
+       20  2025-10-21 16:46   secrets-proof.txt
+      951  2025-10-21 16:46   test-report.xml
+---------                     -------
+     4339                     3 files
